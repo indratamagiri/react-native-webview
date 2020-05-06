@@ -42,12 +42,15 @@ import com.facebook.react.views.scroll.ScrollEvent;
 import com.facebook.react.views.scroll.ScrollEventType;
 import com.facebook.react.views.scroll.OnScrollDispatchHelper;
 import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.CatalystInstance;
 import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReadableMapKeySetIterator;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.bridge.WritableNativeArray;
+import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.common.MapBuilder;
 import com.facebook.react.common.build.ReactBuildConfig;
 import com.facebook.react.module.annotations.ReactModule;
@@ -196,6 +199,8 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
 
     webView.setDownloadListener(new DownloadListener() {
       public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
+        webView.setIgnoreErrFailedForThisURL(url);
+
         RNCWebViewModule module = getModule(reactContext);
 
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
@@ -396,6 +401,11 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
   @ReactProp(name = "messagingEnabled")
   public void setMessagingEnabled(WebView view, boolean enabled) {
     ((RNCWebView) view).setMessagingEnabled(enabled);
+  }
+
+  @ReactProp(name = "messagingModuleName")
+  public void setMessagingModuleName(WebView view, String moduleName) {
+    ((RNCWebView) view).setMessagingModuleName(moduleName);
   }
    
   @ReactProp(name = "incognito")
@@ -729,6 +739,11 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
     protected boolean mLastLoadFailed = false;
     protected @Nullable
     ReadableArray mUrlPrefixesForDefaultIntent;
+    protected @Nullable String ignoreErrFailedForThisURL = null;
+
+    public void setIgnoreErrFailedForThisURL(@Nullable String url) {
+      ignoreErrFailedForThisURL = url;
+    }
 
     @Override
     public void onPageFinished(WebView webView, String url) {
@@ -780,6 +795,21 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
       int errorCode,
       String description,
       String failingUrl) {
+
+      if (ignoreErrFailedForThisURL != null
+          && failingUrl.equals(ignoreErrFailedForThisURL)
+          && errorCode == -1
+          && description.equals("net::ERR_FAILED")) {
+
+        // This is a workaround for a bug in the WebView.
+        // See these chromium issues for more context:
+        // https://bugs.chromium.org/p/chromium/issues/detail?id=1023678
+        // https://bugs.chromium.org/p/chromium/issues/detail?id=1050635
+        // This entire commit should be reverted once this bug is resolved in chromium.
+        setIgnoreErrFailedForThisURL(null);
+        return;
+      }
+
       super.onReceivedError(webView, errorCode, description, failingUrl);
       mLastLoadFailed = true;
 
@@ -988,7 +1018,11 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
     String injectedJS;
     protected boolean messagingEnabled = false;
     protected @Nullable
+    String messagingModuleName;
+    protected @Nullable
     RNCWebViewClient mRNCWebViewClient;
+    protected @Nullable
+    CatalystInstance mCatalystInstance;
     protected boolean sendContentSizeChangeEvents = false;
     private OnScrollDispatchHelper mOnScrollDispatchHelper;
     protected boolean hasScrollEvent = false;
@@ -1001,6 +1035,10 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
      */
     public RNCWebView(ThemedReactContext reactContext) {
       super(reactContext);
+    }
+
+    public void setIgnoreErrFailedForThisURL(String url) {
+      mRNCWebViewClient.setIgnoreErrFailedForThisURL(url);
     }
 
     public void setSendContentSizeChangeEvents(boolean sendContentSizeChangeEvents) {
@@ -1063,6 +1101,14 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
       return new RNCWebViewBridge(webView);
     }
 
+    protected void createCatalystInstance() {
+      ReactContext reactContext = (ReactContext) this.getContext();
+
+      if (reactContext != null) {
+        mCatalystInstance = reactContext.getCatalystInstance();
+      }
+    }
+
     @SuppressLint("AddJavascriptInterface")
     public void setMessagingEnabled(boolean enabled) {
       if (messagingEnabled == enabled) {
@@ -1073,9 +1119,14 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
 
       if (enabled) {
         addJavascriptInterface(createRNCWebViewBridge(this), JAVASCRIPT_INTERFACE);
+        this.createCatalystInstance();
       } else {
         removeJavascriptInterface(JAVASCRIPT_INTERFACE);
       }
+    }
+
+    public void setMessagingModuleName(String moduleName) {
+      messagingModuleName = moduleName;
     }
 
     protected void evaluateJavascriptWithFallback(String script) {
@@ -1101,6 +1152,9 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
     }
 
     public void onMessage(String message) {
+      ReactContext reactContext = (ReactContext) this.getContext();
+      RNCWebView mContext = this;
+
       if (mRNCWebViewClient != null) {
         WebView webView = this;
         webView.post(new Runnable() {
@@ -1111,14 +1165,34 @@ public class RNCWebViewManager extends SimpleViewManager<WebView> {
             }
             WritableMap data = mRNCWebViewClient.createWebViewEvent(webView, webView.getUrl());
             data.putString("data", message);
-            dispatchEvent(webView, new TopMessageEvent(webView.getId(), data));
+
+            if (mCatalystInstance != null) {
+              mContext.sendDirectMessage(data);
+            } else {
+              dispatchEvent(webView, new TopMessageEvent(webView.getId(), data));
+            }
           }
         });
       } else {
         WritableMap eventData = Arguments.createMap();
         eventData.putString("data", message);
-        dispatchEvent(this, new TopMessageEvent(this.getId(), eventData));
+
+        if (mCatalystInstance != null) {
+          this.sendDirectMessage(eventData);
+        } else {
+          dispatchEvent(this, new TopMessageEvent(this.getId(), eventData));
+        }
       }
+    }
+
+    protected void sendDirectMessage(WritableMap data) {
+      WritableNativeMap event = new WritableNativeMap();
+      event.putMap("nativeEvent", data);
+
+      WritableNativeArray params = new WritableNativeArray();
+      params.pushMap(event);
+
+      mCatalystInstance.callFunction(messagingModuleName, "onMessage", params);
     }
 
     protected void onScrollChanged(int x, int y, int oldX, int oldY) {

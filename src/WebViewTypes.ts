@@ -112,6 +112,10 @@ export interface WebViewNavigation extends WebViewNativeEvent {
   mainDocumentURL?: string;
 }
 
+export interface FileDownload {
+  downloadUrl: string;
+}
+
 export type DecelerationRateConstant = 'normal' | 'fast';
 
 export interface WebViewMessage extends WebViewNativeEvent {
@@ -139,6 +143,8 @@ export type WebViewProgressEvent = NativeSyntheticEvent<
 >;
 
 export type WebViewNavigationEvent = NativeSyntheticEvent<WebViewNavigation>;
+
+export type FileDownloadEvent = NativeSyntheticEvent<FileDownload>;
 
 export type WebViewMessageEvent = NativeSyntheticEvent<WebViewMessage>;
 
@@ -271,7 +277,8 @@ export interface AndroidNativeWebViewProps extends CommonNativeWebViewProps {
   saveFormDataDisabled?: boolean;
   textZoom?: number;
   thirdPartyCookiesEnabled?: boolean;
-  urlPrefixesForDefaultIntent?: readonly string[];
+  messagingModuleName?: string;
+  readonly urlPrefixesForDefaultIntent?: string[];
 }
 
 export enum ContentInsetAdjustmentBehavior {
@@ -290,7 +297,7 @@ export interface IOSNativeWebViewProps extends CommonNativeWebViewProps {
   bounces?: boolean;
   contentInset?: ContentInsetProp;
   contentInsetAdjustmentBehavior?: ContentInsetAdjustmentBehavior;
-  dataDetectorTypes?: DataDetectorTypes | readonly DataDetectorTypes[];
+  readonly dataDetectorTypes?: DataDetectorTypes | DataDetectorTypes[];
   decelerationRate?: number;
   directionalLockEnabled?: boolean;
   hideKeyboardAccessoryView?: boolean;
@@ -300,6 +307,7 @@ export interface IOSNativeWebViewProps extends CommonNativeWebViewProps {
   onContentProcessDidTerminate?: (event: WebViewTerminatedEvent) => void;
   injectedJavaScriptForMainFrameOnly?: boolean;
   injectedJavaScriptBeforeContentLoadedForMainFrameOnly?: boolean;
+  onFileDownload?: (event: FileDownloadEvent) => void;
 }
 
 export interface MacOSNativeWebViewProps extends CommonNativeWebViewProps {
@@ -408,7 +416,7 @@ export interface IOSWebViewProps extends WebViewSharedProps {
    *
    * @platform ios
    */
-  dataDetectorTypes?: DataDetectorTypes | readonly DataDetectorTypes[];
+  readonly dataDetectorTypes?: DataDetectorTypes | DataDetectorTypes[];
 
   /**
    * Boolean that determines whether HTML5 videos play inline or use the
@@ -510,6 +518,24 @@ export interface IOSWebViewProps extends WebViewSharedProps {
    * @platform ios
   */
   injectedJavaScriptBeforeContentLoadedForMainFrameOnly?: boolean;
+
+  /**
+   * Function that is invoked when the client needs to download a file.
+   *
+   * iOS 13+ only: If the webview navigates to a URL that results in an HTTP
+   * response with a Content-Disposition header 'attachment...', then
+   * this will be called.
+   *
+   * iOS 8+: If the MIME type indicates that the content is not renderable by the
+   * webview, that will also cause this to be called. On iOS versions before 13,
+   * this is the only condition that will cause this function to be called.
+   *
+   * The application will need to provide its own code to actually download
+   * the file.
+   *
+   * If not provided, the default is to let the webview try to render the file.
+   */
+  onFileDownload?: (event: FileDownloadEvent) => void;
 }
 
 export interface MacOSWebViewProps extends WebViewSharedProps {
@@ -727,7 +753,7 @@ export interface AndroidWebViewProps extends WebViewSharedProps {
    * Use this to list URLs that WebView cannot handle, e.g. a PDF url.
    * @platform android
    */
-  urlPrefixesForDefaultIntent?: readonly string[];
+  readonly urlPrefixesForDefaultIntent?: string[];
 
   /**
    * Boolean value to disable Hardware Acceleration in the `WebView`. Used on Android only
@@ -906,7 +932,7 @@ export interface WebViewSharedProps extends ViewProps {
    * this whitelist, we will open the URL in Safari.
    * The default whitelisted origins are "http://*" and "https://*".
    */
-  originWhitelist?: readonly string[];
+  readonly originWhitelist?: string[];
 
   /**
    * Function that allows custom handling of any web view requests. Return
