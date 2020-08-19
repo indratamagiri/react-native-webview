@@ -67,6 +67,9 @@ export interface WebViewNavigation extends WebViewNativeEvent {
     navigationType: 'click' | 'formsubmit' | 'backforward' | 'reload' | 'formresubmit' | 'other';
     mainDocumentURL?: string;
 }
+export interface ShouldStartLoadRequest extends WebViewNavigation {
+    isTopFrame: boolean;
+}
 export interface FileDownload {
     downloadUrl: string;
 }
@@ -86,14 +89,19 @@ export interface WebViewHttpError extends WebViewNativeEvent {
     description: string;
     statusCode: number;
 }
+export interface WebViewRenderProcessGoneDetail {
+    didCrash: boolean;
+}
 export declare type WebViewEvent = NativeSyntheticEvent<WebViewNativeEvent>;
 export declare type WebViewProgressEvent = NativeSyntheticEvent<WebViewNativeProgressEvent>;
 export declare type WebViewNavigationEvent = NativeSyntheticEvent<WebViewNavigation>;
+export declare type ShouldStartLoadRequestEvent = NativeSyntheticEvent<ShouldStartLoadRequest>;
 export declare type FileDownloadEvent = NativeSyntheticEvent<FileDownload>;
 export declare type WebViewMessageEvent = NativeSyntheticEvent<WebViewMessage>;
 export declare type WebViewErrorEvent = NativeSyntheticEvent<WebViewError>;
 export declare type WebViewTerminatedEvent = NativeSyntheticEvent<WebViewNativeEvent>;
 export declare type WebViewHttpErrorEvent = NativeSyntheticEvent<WebViewHttpError>;
+export declare type WebViewRenderProcessGoneEvent = NativeSyntheticEvent<WebViewRenderProcessGoneDetail>;
 export declare type DataDetectorTypes = 'phoneNumber' | 'link' | 'address' | 'calendarEvent' | 'trackingNumber' | 'flightNumber' | 'lookupSuggestion' | 'none' | 'all';
 export declare type OverScrollModeType = 'always' | 'content' | 'never';
 export declare type CacheMode = 'LOAD_DEFAULT' | 'LOAD_CACHE_ONLY' | 'LOAD_CACHE_ELSE_NETWORK' | 'LOAD_NO_CACHE';
@@ -150,12 +158,15 @@ export interface WebViewNativeConfig {
      */
     viewManager?: ViewManager;
 }
-export declare type OnShouldStartLoadWithRequest = (event: WebViewNavigation) => boolean;
+export declare type OnShouldStartLoadWithRequest = (event: ShouldStartLoadRequest) => boolean;
 export interface CommonNativeWebViewProps extends ViewProps {
     cacheEnabled?: boolean;
     incognito?: boolean;
     injectedJavaScript?: string;
     injectedJavaScriptBeforeContentLoaded?: string;
+    injectedJavaScriptForMainFrameOnly?: boolean;
+    injectedJavaScriptBeforeContentLoadedForMainFrameOnly?: boolean;
+    javaScriptCanOpenWindowsAutomatically?: boolean;
     mediaPlaybackRequiresUserAction?: boolean;
     messagingEnabled: boolean;
     onScroll?: (event: NativeScrollEvent) => void;
@@ -165,13 +176,13 @@ export interface CommonNativeWebViewProps extends ViewProps {
     onLoadingStart: (event: WebViewNavigationEvent) => void;
     onHttpError: (event: WebViewHttpErrorEvent) => void;
     onMessage: (event: WebViewMessageEvent) => void;
-    onShouldStartLoadWithRequest: (event: WebViewNavigationEvent) => void;
+    onShouldStartLoadWithRequest: (event: ShouldStartLoadRequestEvent) => void;
     showsHorizontalScrollIndicator?: boolean;
     showsVerticalScrollIndicator?: boolean;
     source: any;
     userAgent?: string;
     /**
-     * Append to the existing user-agent. Overriden if `userAgent` is set.
+     * Append to the existing user-agent. Overridden if `userAgent` is set.
      */
     applicationNameForUserAgent?: string;
 }
@@ -187,6 +198,7 @@ export interface AndroidNativeWebViewProps extends CommonNativeWebViewProps {
     javaScriptEnabled?: boolean;
     mixedContentMode?: 'never' | 'always' | 'compatibility';
     onContentSizeChange?: (event: WebViewEvent) => void;
+    onRenderProcessGone?: (event: WebViewRenderProcessGoneEvent) => void;
     overScrollMode?: OverScrollModeType;
     saveFormDataDisabled?: boolean;
     textZoom?: number;
@@ -200,6 +212,7 @@ export declare enum ContentInsetAdjustmentBehavior {
     never = "never",
     always = "always"
 }
+export declare type ContentMode = 'recommended' | 'mobile' | 'desktop';
 export interface IOSNativeWebViewProps extends CommonNativeWebViewProps {
     allowingReadAccessToURL?: string;
     allowsBackForwardNavigationGestures?: boolean;
@@ -209,6 +222,7 @@ export interface IOSNativeWebViewProps extends CommonNativeWebViewProps {
     bounces?: boolean;
     contentInset?: ContentInsetProp;
     contentInsetAdjustmentBehavior?: ContentInsetAdjustmentBehavior;
+    contentMode?: ContentMode;
     readonly dataDetectorTypes?: DataDetectorTypes | DataDetectorTypes[];
     decelerationRate?: number;
     directionalLockEnabled?: boolean;
@@ -295,6 +309,17 @@ export interface IOSWebViewProps extends WebViewSharedProps {
      * @platform ios
      */
     contentInset?: ContentInsetProp;
+    /**
+     * Defaults to `recommended`, which loads mobile content on iPhone
+     * and iPad Mini but desktop content on other iPads.
+     *
+     * Possible values are:
+     * - `'recommended'`
+     * - `'mobile'`
+     * - `'desktop'`
+     * @platform ios
+     */
+    contentMode?: ContentMode;
     /**
      * Determines the types of data converted to clickable URLs in the web view's content.
      * By default only phone numbers are detected.
@@ -553,6 +578,11 @@ export interface AndroidWebViewProps extends WebViewSharedProps {
     onNavigationStateChange?: (event: WebViewNavigation) => void;
     onContentSizeChange?: (event: WebViewEvent) => void;
     /**
+     * Function that is invoked when the `WebView` process crashes or is killed by the OS.
+     * Works only on Android (minimum API level 26).
+     */
+    onRenderProcessGone?: (event: WebViewRenderProcessGoneEvent) => void;
+    /**
      * https://developer.android.com/reference/android/webkit/WebSettings.html#setCacheMode(int)
      * Set the cacheMode. Possible values are:
      *
@@ -675,6 +705,11 @@ export interface WebViewSharedProps extends ViewProps {
      */
     javaScriptEnabled?: boolean;
     /**
+     * A Boolean value indicating whether JavaScript can open windows without user interaction.
+     * The default value is `false`.
+     */
+    javaScriptCanOpenWindowsAutomatically?: boolean;
+    /**
      * Stylesheet object to set the style of the container view.
      */
     containerStyle?: StyleProp<ViewStyle>;
@@ -743,6 +778,16 @@ export interface WebViewSharedProps extends ViewProps {
      */
     injectedJavaScriptBeforeContentLoaded?: string;
     /**
+     * If `true` (default; mandatory for Android), loads the `injectedJavaScript` only into the main frame.
+     * If `false` (only supported on iOS and macOS), loads it into all frames (e.g. iframes).
+     */
+    injectedJavaScriptForMainFrameOnly?: boolean;
+    /**
+     * If `true` (default; mandatory for Android), loads the `injectedJavaScriptBeforeContentLoaded` only into the main frame.
+     * If `false` (only supported on iOS and macOS), loads it into all frames (e.g. iframes).
+     */
+    injectedJavaScriptBeforeContentLoadedForMainFrameOnly?: boolean;
+    /**
      * Boolean value that determines whether a horizontal scroll indicator is
      * shown in the `WebView`. The default value is `true`.
      */
@@ -780,6 +825,10 @@ export interface WebViewSharedProps extends ViewProps {
      * Should caching be enabled. Default is true.
      */
     cacheEnabled?: boolean;
+    /**
+     * Append to the existing user-agent. Overridden if `userAgent` is set.
+     */
+    applicationNameForUserAgent?: string;
 }
 export {};
 //# sourceMappingURL=WebViewTypes.d.ts.map
