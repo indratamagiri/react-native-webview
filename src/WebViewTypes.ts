@@ -181,6 +181,8 @@ export type OverScrollModeType = 'always' | 'content' | 'never';
 
 export type CacheMode = 'LOAD_DEFAULT' | 'LOAD_CACHE_ONLY' | 'LOAD_CACHE_ELSE_NETWORK' | 'LOAD_NO_CACHE';
 
+export type AndroidLayerType = 'none' | 'software' | 'hardware';
+
 export interface WebViewSourceUri {
   /**
    * The URI to load in the `WebView`. Can be a local or remote file.
@@ -283,6 +285,7 @@ export interface AndroidNativeWebViewProps extends CommonNativeWebViewProps {
   allowFileAccessFromFileURLs?: boolean;
   allowUniversalAccessFromFileURLs?: boolean;
   androidHardwareAccelerationDisabled?: boolean;
+  androidLayerType?: AndroidLayerType;
   domStorageEnabled?: boolean;
   geolocationEnabled?: boolean;
   javaScriptEnabled?: boolean;
@@ -297,12 +300,7 @@ export interface AndroidNativeWebViewProps extends CommonNativeWebViewProps {
   readonly urlPrefixesForDefaultIntent?: string[];
 }
 
-export enum ContentInsetAdjustmentBehavior {
-  automatic = 'automatic',
-  scrollableAxes = 'scrollableAxes',
-  never = 'never',
-  always = 'always'
-};
+export declare type ContentInsetAdjustmentBehavior = 'automatic' | 'scrollableAxes' | 'never' | 'always';
 
 export declare type ContentMode = 'recommended' | 'mobile' | 'desktop';
 
@@ -312,6 +310,7 @@ export interface IOSNativeWebViewProps extends CommonNativeWebViewProps {
   allowsInlineMediaPlayback?: boolean;
   allowsLinkPreview?: boolean;
   automaticallyAdjustContentInsets?: boolean;
+  autoManageStatusBarEnabled?: boolean;
   bounces?: boolean;
   contentInset?: ContentInsetProp;
   contentInsetAdjustmentBehavior?: ContentInsetAdjustmentBehavior;
@@ -416,7 +415,7 @@ export interface IOSWebViewProps extends WebViewSharedProps {
   /**
    * Defaults to `recommended`, which loads mobile content on iPhone
    * and iPad Mini but desktop content on other iPads.
-   * 
+   *
    * Possible values are:
    * - `'recommended'`
    * - `'mobile'`
@@ -500,6 +499,13 @@ export interface IOSWebViewProps extends WebViewSharedProps {
   sharedCookiesEnabled?: boolean;
 
   /**
+   * Set true if StatusBar should be light when user watch video fullscreen.
+   * The default value is `true`.
+   * @platform ios
+   */
+  autoManageStatusBarEnabled?: boolean;
+
+  /**
    * A Boolean value that determines whether scrolling is disabled in a particular direction.
    * The default value is `true`.
    * @platform ios
@@ -549,6 +555,15 @@ export interface IOSWebViewProps extends WebViewSharedProps {
    * @platform ios
   */
   injectedJavaScriptBeforeContentLoadedForMainFrameOnly?: boolean;
+
+  /**
+   * Boolean value that determines whether a pull to refresh gesture is
+   * available in the `WebView`. The default value is `false`.
+   * If `true`, sets `bounces` automatically to `true`
+   * @platform ios
+   *
+  */
+  pullToRefreshEnabled?: boolean;
 
   /**
    * Function that is invoked when the client needs to download a file.
@@ -798,6 +813,18 @@ export interface AndroidWebViewProps extends WebViewSharedProps {
    * @platform android
    */
   androidHardwareAccelerationDisabled?: boolean;
+
+    /**
+   * https://developer.android.com/reference/android/webkit/WebView#setLayerType(int,%20android.graphics.Paint)
+   * Sets the layerType. Possible values are:
+   *
+   * - `'none'` (default)
+   * - `'software'`
+   * - `'hardware'`
+   *
+   * @platform android
+   */
+  androidLayerType?: AndroidLayerType;
 
   /**
    * Boolean value to enable third party cookies in the `WebView`. Used on
